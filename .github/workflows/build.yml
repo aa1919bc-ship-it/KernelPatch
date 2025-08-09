@@ -45,20 +45,20 @@ jobs:
           mv kpimg.elf kpimg.elf-linux
           make clean
 
-          cd ..
-          cd kpms
+          # cd ..
+          # cd kpms
 
-          cd demo-hello
-          make
-          mv hello.kpm demo-hello.kpm
+          # cd demo-hello
+          # make
+          # mv hello.kpm demo-hello.kpm
 
-          cd ../demo-inlinehook
-          make
-          mv inlinehook.kpm demo-inlinehook.kpm
+          # cd ../demo-inlinehook
+          # make
+          # mv inlinehook.kpm demo-inlinehook.kpm
 
-          cd ../demo-syscallhook
-          make
-          mv syscallhook.kpm demo-syscallhook.kpm
+          # cd ../demo-syscallhook
+          # make
+          # mv syscallhook.kpm demo-syscallhook.kpm
 
       - name: Upload elf
         uses: actions/upload-artifact@v4
@@ -76,9 +76,9 @@ jobs:
           artifacts: |
             kernel/kpimg-linux
             kernel/kpimg-android
-            kpms/demo-hello/demo-hello.kpm
-            kpms/demo-inlinehook/demo-inlinehook.kpm
-            kpms/demo-syscallhook/demo-syscallhook.kpm
+            # kpms/demo-hello/demo-hello.kpm
+            # kpms/demo-inlinehook/demo-inlinehook.kpm
+            # kpms/demo-syscallhook/demo-syscallhook.kpm
           generateReleaseNotes: true
           allowUpdates: true
           replacesArtifacts: true
