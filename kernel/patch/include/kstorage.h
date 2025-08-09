@@ -9,8 +9,9 @@
 #include <ktypes.h>
 #include <uapi/scdefs.h>
 #include <stdbool.h>
-
+ 
 struct kstorage {
+ 
     int gid;
     long did;
     int dlen;
