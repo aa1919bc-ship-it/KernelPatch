@@ -7,3 +7,5 @@ build
 
 test
 script
+kernel/kpimg-android
+kernel/kpimg.elf-android
