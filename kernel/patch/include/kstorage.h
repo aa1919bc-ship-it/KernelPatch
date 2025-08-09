@@ -10,11 +10,7 @@
 #include <uapi/scdefs.h>
 #include <stdbool.h>
 
-struct kstorage
-{
-    struct list_head list;
-    struct rcu_head rcu;
-
+struct kstorage {
     int gid;
     long did;
     int dlen;
@@ -27,7 +23,10 @@ int kstorage_group_size(int gid);
 
 int write_kstorage(int gid, long did, void *data, int offset, int len, bool data_is_user);
 
-/// must within rcu read lock
+/*
+ * get_kstorage caches the most recent lookup for faster repeated queries.
+ * Returns NULL if the record is not found.
+ */
 const struct kstorage *get_kstorage(int gid, long did);
 
 typedef int (*on_kstorage_cb)(struct kstorage *kstorage, void *udata);
