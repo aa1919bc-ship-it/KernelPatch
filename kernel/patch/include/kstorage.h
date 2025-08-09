@@ -12,7 +12,6 @@
 
 struct kstorage
 {
-    struct list_head list;
     struct rcu_head rcu;
 
     int gid;
