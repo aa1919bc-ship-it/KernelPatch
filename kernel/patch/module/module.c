@@ -22,7 +22,7 @@
 #include <linux/vmalloc.h>
 #include <linux/rcupdate.h>
 #include <linux/rculist.h>
-
+#include <asm/atomic.h>
 #include "module.h"
 #include "relo.h"
 
