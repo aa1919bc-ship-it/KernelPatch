@@ -49,6 +49,7 @@ struct module
     void *start;
 
     struct list_head list;
+    atomic_t refcnt;
 };
 
 long load_module(const void *data, int len, const char *args, const char *event, void *__user reserved);

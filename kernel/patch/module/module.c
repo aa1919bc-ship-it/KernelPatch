@@ -413,6 +413,7 @@ long load_module(const void *data, int len, const char *args, const char *event,
     struct module *mod = (struct module *)vmalloc(sizeof(struct module));
     if (!mod) return -ENOMEM;
     memset(mod, 0, sizeof(struct module));
+    atomic_set(&mod->refcnt, 1); // 初始化引用计数为1
 
     if (args) {
         mod->args = vmalloc(strlen(args) + 1);
@@ -458,27 +459,33 @@ long unload_module(const char *name, void *__user reserved)
     if (!name) return -EINVAL;
     logkfe("name: %s\n", name);
 
-    rcu_read_lock();
     long rc = 0;
 
+    spin_lock(&module_lock);
     struct module *mod = find_module(name);
     if (!mod) {
         rc = -ENOENT;
+        spin_unlock(&module_lock);
         goto out;
     }
     list_del(&mod->list);
+    spin_unlock(&module_lock);
+
     rc = (*mod->exit)(reserved);
 
     if (mod->args) kvfree(mod->args);
     if (mod->ctl_args) kvfree(mod->ctl_args);
 
     kp_free_exec(mod->start);
-    kvfree(mod);
+
+    // 引用计数减一，只有为0时才释放
+    if (atomic_dec_and_test(&mod->refcnt)) {
+        kvfree(mod);
+    }
 
     logkfi("name: %s, rc: %d\n", name, rc);
 
 out:
-    rcu_read_unlock();
     return rc;
 }
 
@@ -531,17 +538,20 @@ long module_control0(const char *name, const char *ctl_args, char *__user out_ms
     logkfi("name %s, args: %s\n", name, ctl_args);
 
     long rc = 0;
-    rcu_read_lock();
 
+    spin_lock(&module_lock);
     struct module *mod = find_module(name);
     if (!mod) {
         rc = -ENOENT;
+        spin_unlock(&module_lock);
         goto out;
     }
 
     if (!*mod->ctl0) {
         logkfe("no ctl0\n");
         rc = -ENOSYS;
+        spin_unlock(&module_lock);
+        atomic_dec(&mod->refcnt);
         goto out;
     }
 
@@ -550,16 +560,24 @@ long module_control0(const char *name, const char *ctl_args, char *__user out_ms
     mod->ctl_args = vmalloc(args_len + 1);
     if (!mod->ctl_args) {
         rc = -ENOMEM;
+        spin_unlock(&module_lock);
+        atomic_dec(&mod->refcnt);
         goto out;
     }
 
     strcpy(mod->ctl_args, ctl_args);
 
+    spin_unlock(&module_lock);
+
     rc = (*mod->ctl0)(mod->ctl_args, out_msg, outlen);
 
     logkfi("name: %s, rc: %d\n", name, rc);
+
+    // 用完后递减引用计数
+    if (atomic_dec_and_test(&mod->refcnt)) {
+        kvfree(mod);
+    }
 out:
-    rcu_read_unlock();
     return rc;
 }
 
@@ -567,25 +585,34 @@ long module_control1(const char *name, void *a1, void *a2, void *a3)
 {
     logkfi("name %s, a1: %llx, a2: %llx, a3: %llx\n", name, a1, a2, a3);
     long rc = 0;
-    rcu_read_lock();
 
+    spin_lock(&module_lock);
     struct module *mod = find_module(name);
     if (!mod) {
         rc = -ENOENT;
+        spin_unlock(&module_lock);
         goto out;
     }
 
     if (!*mod->ctl1) {
         logkfe("no ctl1\n");
         rc = -ENOSYS;
+        spin_unlock(&module_lock);
+        atomic_dec(&mod->refcnt);
         goto out;
     }
+
+    spin_unlock(&module_lock);
 
     rc = (*mod->ctl1)(a1, a2, a3);
 
     logkfi("name: %s, rc: %d\n", name, rc);
+
+    // 用完后递减引用计数
+    if (atomic_dec_and_test(&mod->refcnt)) {
+        kvfree(mod);
+    }
 out:
-    rcu_read_unlock();
     return rc;
 }
 
@@ -595,6 +622,7 @@ struct module *find_module(const char *name)
     list_for_each_entry(pos, &modules.list, list)
     {
         if (!strcmp(name, pos->info.name)) {
+            atomic_inc(&pos->refcnt);
             return pos;
         }
     }
@@ -603,7 +631,7 @@ struct module *find_module(const char *name)
 
 int get_module_nums()
 {
-    rcu_read_lock();
+    spin_lock(&module_lock);
 
     struct module *pos;
     int n = 0;
@@ -611,7 +639,8 @@ int get_module_nums()
     {
         n++;
     }
-    rcu_read_unlock();
+
+    spin_unlock(&module_lock);
 
     logkfd("%d\n", n);
     return n;
@@ -619,7 +648,7 @@ int get_module_nums()
 
 int list_modules(char *out_names, int size)
 {
-    rcu_read_lock();
+    spin_lock(&module_lock);
 
     struct module *pos;
     int off = 0;
@@ -629,17 +658,20 @@ int list_modules(char *out_names, int size)
     }
     if (off > 0) out_names[off - 1] = '\0';
 
-    rcu_read_unlock();
+    spin_unlock(&module_lock);
     return off;
 }
 
 int get_module_info(const char *name, char *out_info, int size)
 {
     if (size <= 0) return 0;
-    rcu_read_lock();
 
+    spin_lock(&module_lock);
     struct module *mod = find_module(name);
-    if (!mod) return -ENOENT;
+    if (!mod) {
+        spin_unlock(&module_lock);
+        return -ENOENT;
+    }
 
     int sz = snprintf(out_info, size - 1,
                       "name=%s\n"
@@ -654,7 +686,7 @@ int get_module_info(const char *name, char *out_info, int size)
     if (sz > 0) out_info[sz - 1] = '\0';
     logkfd("%s", out_info);
 
-    rcu_read_unlock();
+    spin_unlock(&module_lock);
     return sz;
 }
 
